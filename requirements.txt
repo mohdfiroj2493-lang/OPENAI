@@ -1,4 +1,7 @@
 streamlit
+requests
+beautifulsoup4
+duckduckgo-search
 wikipedia
 sympy
 pandas
@@ -6,3 +9,4 @@ numpy
 pypdf
 python-docx
 matplotlib
+trafilatura
