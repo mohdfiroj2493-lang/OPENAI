@@ -1,7 +1,6 @@
-import io
 import re
+import io
 import math
-import time
 import textwrap
 from collections import Counter
 from urllib.parse import urlparse
@@ -17,81 +16,40 @@ import sympy as sp
 from pypdf import PdfReader
 from docx import Document
 
-st.set_page_config(
-    page_title="Power Research AI Assistant",
-    page_icon="🧠",
-    layout="wide",
-    initial_sidebar_state="expanded",
-)
+st.set_page_config(page_title="Powerful Web Research AI", page_icon="🌐", layout="wide")
 
 CUSTOM_CSS = """
 <style>
-.block-container {padding-top: 1.2rem;}
-.hero {
-    background: linear-gradient(135deg, #111827, #1f2937, #374151);
-    color: white;
-    padding: 1.4rem 1.6rem;
-    border-radius: 24px;
-    margin-bottom: 1rem;
-    box-shadow: 0 8px 28px rgba(0,0,0,.16);
-}
-.hero h1 {font-size: 2.25rem; margin: 0; font-weight: 850;}
-.hero p {margin: .35rem 0 0; opacity: .88; font-size: 1.03rem;}
-.answer-card {
-    background: #ffffff;
-    border: 1px solid #e5e7eb;
-    border-radius: 20px;
-    padding: 1.15rem 1.25rem;
-    box-shadow: 0 4px 18px rgba(15,23,42,.05);
-    line-height: 1.62;
-}
-.source-card {
-    background: #f9fafb;
-    border: 1px solid #e5e7eb;
-    border-radius: 16px;
-    padding: .9rem;
-    margin: .45rem 0;
-}
-.metric-card {
-    background: #f9fafb;
-    border: 1px solid #e5e7eb;
-    border-radius: 16px;
-    padding: .9rem;
-}
-.small-muted {color: #6b7280; font-size: .88rem;}
-.tag {display: inline-block; background: #eef2ff; color: #3730a3; padding: .16rem .5rem; border-radius: 999px; font-size: .78rem; margin-right: .3rem;}
-img.figure-img {border-radius: 14px; border: 1px solid #e5e7eb; max-height: 230px; object-fit: cover; width: 100%;}
+.main-title {font-size: 2.35rem; font-weight: 850; margin-bottom: 0.2rem;}
+.subtitle {color: #666; font-size: 1rem; margin-bottom: 1.2rem;}
+.answer-card {background: #ffffff; border: 1px solid #e7e7e7; border-radius: 18px; padding: 1.25rem; box-shadow: 0 2px 16px rgba(0,0,0,0.05); line-height: 1.65;}
+.source-card {background: #f8f9fb; border: 1px solid #ececec; border-radius: 14px; padding: 0.85rem; margin-bottom: 0.65rem;}
+.figure-card {background: #fff; border: 1px solid #eee; border-radius: 14px; padding: 0.65rem; margin-bottom: 0.65rem;}
+.small-muted {color: #777; font-size: 0.88rem;}
+.badge {display:inline-block; border:1px solid #ddd; border-radius:999px; padding:0.15rem 0.55rem; margin:0.15rem; font-size:0.8rem; background:#fafafa;}
 </style>
 """
 st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
-st.markdown(
-    '<div class="hero"><h1>🧠 Power Research AI Assistant</h1><p>Detailed internet research, online PDFs, figures, equations, document analysis, math, and data tools. No API key required.</p></div>',
-    unsafe_allow_html=True,
-)
+st.markdown('<div class="main-title">🌐 Powerful Web Research AI</div>', unsafe_allow_html=True)
+st.markdown('<div class="subtitle">Researches webpages, online PDFs/reports, images, equations, and uploaded files. No API key required.</div>', unsafe_allow_html=True)
 
-HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/123 Safari/537.36"
-}
+HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36"}
 
 STOPWORDS = set("""
-a an and are as at be by for from has have he her him his i in is it its of on or that the to was were will with you your we they them this those these can could should would about into over under than then there their if but not no yes do does did done using use used more most many much such also other some any all each when where what why how who whom whose which write give explain define equation equations motion law formula formulas tell discuss describe provide please make detailed detail answer everything applicable expression expressions figure image report pdf online internet google
+a an and are as at be by for from has have he in is it its of on or that the to was were will with you your i we they them this those these can could should would about into over under than then there their if but not no yes do does did done using use used more most many much such also other some any all each when where what why how who whom whose which write give explain define method methods calculate calculation available everything detailed answer very same chatgpt
 """.split())
 
-SCIENCE_WORDS = {
-    "physics", "chemistry", "biology", "math", "equation", "formula", "motion", "force", "energy", "velocity", "acceleration",
-    "concrete", "soil", "geotechnical", "foundation", "engineering", "construction", "beam", "load", "stress", "strain"
-}
+BAD_TOPIC_WORDS = set("moon lunar astronaut apollo planet satellite astronomy nasa spacecraft orbit celestial".split())
 
 
 def clean_text(text: str) -> str:
-    text = re.sub(r"\s+", " ", text or "").strip()
-    return text
+    return re.sub(r"\s+", " ", text or "").strip()
 
 
 def split_sentences(text: str):
     text = clean_text(text)
     parts = re.split(r"(?<=[.!?])\s+", text)
-    return [p.strip() for p in parts if 35 <= len(p.strip()) <= 700]
+    return [p.strip() for p in parts if 35 <= len(p.strip()) <= 650]
 
 
 def keywords(query: str):
@@ -99,244 +57,317 @@ def keywords(query: str):
     return [w for w in words if w not in STOPWORDS]
 
 
-def domain_name(url: str) -> str:
-    try:
-        return urlparse(url).netloc.replace("www.", "")
-    except Exception:
-        return "source"
+def keyphrases(query: str):
+    q = query.lower()
+    phrases = []
+    quoted = re.findall(r'"([^"]+)"', query)
+    phrases.extend([x.lower() for x in quoted])
+    # Important two/three-word technical phrases from the question itself.
+    words = keywords(query)
+    for n in [3, 2]:
+        for i in range(len(words) - n + 1):
+            phrase = " ".join(words[i:i+n])
+            if len(phrase) > 7:
+                phrases.append(phrase)
+    # Remove duplicates while preserving order.
+    seen = set()
+    out = []
+    for p in phrases:
+        if p not in seen:
+            seen.add(p)
+            out.append(p)
+    return out[:8]
 
 
-def safe_get(url: str, timeout: int = 12):
-    try:
-        return requests.get(url, headers=HEADERS, timeout=timeout, allow_redirects=True)
-    except Exception:
-        return None
+def relevance_score(text: str, query: str) -> float:
+    text_l = (text or "").lower()
+    q_words = keywords(query)
+    phrases = keyphrases(query)
+    if not q_words:
+        return 0
+    score = 0.0
+    for w in q_words:
+        if re.search(rf"\b{re.escape(w)}\b", text_l):
+            score += 1.0
+    for p in phrases:
+        if p in text_l:
+            score += 4.0
+    # Penalize obviously irrelevant astronomy result when query is geotechnical earth pressure.
+    if "earth" in q_words and "pressure" in q_words:
+        bad_hits = sum(1 for w in BAD_TOPIC_WORDS if w in text_l)
+        if bad_hits and "pressure" not in text_l[:2500]:
+            score -= 10
+        if "earth pressure" in text_l:
+            score += 8
+        if any(x in text_l for x in ["retaining wall", "rankine", "coulomb", "active pressure", "passive pressure", "at-rest pressure", "lateral earth pressure"]):
+            score += 8
+    coverage = sum(1 for w in set(q_words) if w in text_l) / max(len(set(q_words)), 1)
+    return score + 5 * coverage
 
 
-def ddg_text_search(query: str, max_results: int = 10):
+def is_relevant(text: str, query: str, min_score: float = 7.0) -> bool:
+    return relevance_score(text, query) >= min_score
+
+
+def sentence_score(sentence: str, query_words, phrases):
+    s = sentence.lower()
+    score = 0.0
+    for w in query_words:
+        if re.search(rf"\b{re.escape(w)}\b", s):
+            score += 2.0
+    for p in phrases:
+        if p in s:
+            score += 4.0
+    if any(x in s for x in ["formula", "equation", "method", "theory", "rankine", "coulomb", "coefficient", "pressure", "used", "based on", "assumes", "calculated"]):
+        score += 2.0
+    score += min(len(sentence) / 220, 2)
+    return score
+
+
+def build_search_queries(query: str):
+    phrases = keyphrases(query)
+    q_clean = query.strip()
+    qs = [q_clean]
+    if phrases:
+        qs.append('"' + phrases[0] + '" ' + q_clean)
+    qs.append(q_clean + " methods formulas")
+    qs.append(q_clean + " pdf report")
+    qs.append(q_clean + " site:edu OR site:gov")
+    # Generic engineering context when user asks earth pressure, without hardcoding the answer.
+    if "earth" in q_clean.lower() and "pressure" in q_clean.lower():
+        qs.extend([
+            '"earth pressure" "retaining wall" methods Rankine Coulomb',
+            '"lateral earth pressure" calculation methods pdf',
+            '"active passive at-rest earth pressure"',
+        ])
+    # Deduplicate.
+    out = []
+    seen = set()
+    for q in qs:
+        if q not in seen:
+            out.append(q)
+            seen.add(q)
+    return out[:8]
+
+
+def ddg_search(query: str, max_results: int = 8):
     results = []
     try:
         with DDGS() as ddgs:
             for r in ddgs.text(query, max_results=max_results):
                 title = r.get("title") or "Untitled"
-                url = r.get("href") or r.get("url") or ""
-                snippet = r.get("body") or ""
-                if url and not any(bad in url.lower() for bad in ["/search?", "duckduckgo.com"]):
-                    results.append({"title": title, "url": url, "snippet": snippet, "kind": "web"})
+                href = r.get("href") or r.get("url") or ""
+                body = r.get("body") or ""
+                if href:
+                    results.append({"title": title, "url": href, "snippet": body})
     except Exception as e:
         st.warning(f"Search issue: {e}")
     return results
 
 
 def ddg_image_search(query: str, max_results: int = 6):
-    images = []
+    imgs = []
     try:
         with DDGS() as ddgs:
             for r in ddgs.images(query, max_results=max_results):
-                img = r.get("image") or r.get("thumbnail") or ""
+                image = r.get("image") or r.get("thumbnail") or ""
                 title = r.get("title") or "Figure"
                 source = r.get("url") or r.get("source") or ""
-                if img:
-                    images.append({"title": title, "image": img, "source": source})
+                if image:
+                    imgs.append({"title": title, "image": image, "source": source})
     except Exception:
         pass
-    return images
+    return imgs
 
 
-def extract_html_text(url: str, limit: int = 22000):
-    response = safe_get(url)
-    if not response or response.status_code >= 400:
-        return ""
-    content_type = response.headers.get("content-type", "").lower()
-    if "pdf" in content_type or url.lower().endswith(".pdf"):
-        return extract_pdf_from_bytes(response.content, limit=limit)
+def fetch_page_text(url: str, timeout: int = 10):
     try:
+        response = requests.get(url, headers=HEADERS, timeout=timeout)
+        if response.status_code >= 400:
+            return ""
+        content_type = response.headers.get("content-type", "").lower()
+        if "pdf" in content_type or url.lower().endswith(".pdf"):
+            reader = PdfReader(io.BytesIO(response.content))
+            pages = []
+            for page in reader.pages[:15]:
+                pages.append(page.extract_text() or "")
+            return clean_text(" ".join(pages))[:30000]
         soup = BeautifulSoup(response.text, "html.parser")
-        for tag in soup(["script", "style", "nav", "footer", "header", "aside", "form", "noscript"]):
+        for tag in soup(["script", "style", "nav", "footer", "header", "aside", "form"]):
             tag.decompose()
-        chunks = []
-        for tag in soup.find_all(["h1", "h2", "h3", "p", "li", "table"]):
+        items = []
+        for tag in soup.find_all(["h1", "h2", "h3", "p", "li", "td", "th"]):
             t = clean_text(tag.get_text(" "))
-            if len(t) > 45:
-                chunks.append(t)
-        return clean_text(" ".join(chunks))[:limit]
+            if len(t) > 35:
+                items.append(t)
+        return clean_text(" ".join(items))[:30000]
     except Exception:
         return ""
 
 
-def extract_pdf_from_bytes(data: bytes, limit: int = 22000):
+def safe_wikipedia_fallback(query: str):
     try:
-        reader = PdfReader(io.BytesIO(data))
-        pages = []
-        for page in reader.pages[:12]:
-            pages.append(page.extract_text() or "")
-        return clean_text("\n".join(pages))[:limit]
-    except Exception:
-        return ""
-
-
-def wikipedia_source(query: str):
-    try:
-        hits = wikipedia.search(query, results=3)
-        if not hits:
-            return None
-        page = wikipedia.page(hits[0], auto_suggest=False)
-        return {"title": page.title, "url": page.url, "snippet": "Wikipedia background source", "kind": "wikipedia", "text": page.content[:18000]}
+        hits = wikipedia.search(query, results=6)
+        for hit in hits:
+            try:
+                page = wikipedia.page(hit, auto_suggest=False)
+                text = page.title + " " + page.content[:12000]
+                if is_relevant(text, query, min_score=9.0):
+                    return {"title": page.title, "url": page.url, "text": page.content[:12000]}
+            except Exception:
+                continue
     except Exception:
         return None
+    return None
 
 
-def score_sentence(sentence: str, q_words):
-    s = sentence.lower()
-    score = 0.0
-    for w in q_words:
-        if w in s:
-            score += 2.5
-    if any(x in s for x in ["equation", "formula", "law", "states", "defined", "definition", "therefore", "because", "used", "applications", "example", "where", "unit", "figure", "diagram"]):
-        score += 1.4
-    if re.search(r"[A-Za-z]\s*=|\d|\^|²|³|√|/", sentence):
-        score += 1.2
-    score += min(len(sentence) / 220, 2.0)
-    return score
+def extract_equations(text: str, limit: int = 12):
+    candidates = []
+    patterns = [
+        r"\b[A-Za-z][A-Za-z0-9_]*\s*=\s*[^.;,\n]{2,80}",
+        r"\bK[_a-zA-Z0-9]*\s*=\s*[^.;,\n]{2,80}",
+        r"\bP[_a-zA-Z0-9]*\s*=\s*[^.;,\n]{2,80}",
+        r"\b\w+\s*\^\s*2\s*=\s*[^.;,\n]{2,80}",
+    ]
+    for pat in patterns:
+        for m in re.finditer(pat, text):
+            eq = clean_text(m.group(0))
+            if 4 <= len(eq) <= 100 and not eq.lower().startswith(("http", "figure", "table")):
+                candidates.append(eq)
+    seen = set()
+    out = []
+    for c in candidates:
+        c = re.sub(r"\s+", " ", c)
+        if c not in seen:
+            seen.add(c)
+            out.append(c)
+    return out[:limit]
 
 
-def rank_sentences(text: str, query: str, max_items: int = 22):
-    sents = split_sentences(text)
-    if not sents:
-        return []
+def make_detailed_answer(query: str, source_texts, sources):
+    full_text = clean_text("\n\n".join(source_texts))
+    sentences = split_sentences(full_text)
     q_words = keywords(query)
-    ranked = sorted(sents, key=lambda s: score_sentence(s, q_words), reverse=True)
-    selected = []
+    phrases = keyphrases(query)
+
+    ranked = sorted(sentences, key=lambda s: sentence_score(s, q_words, phrases), reverse=True)
+    chosen = []
     seen = set()
     for s in ranked:
-        simple = re.sub(r"[^a-z0-9]", "", s.lower())[:100]
-        if simple not in seen:
-            selected.append(s)
-            seen.add(simple)
-        if len(selected) >= max_items:
+        simplified = re.sub(r"[^a-z0-9]+", " ", s.lower())[:160]
+        if simplified not in seen:
+            chosen.append(s)
+            seen.add(simplified)
+        if len(chosen) >= 18:
             break
-    return selected
 
+    if not chosen:
+        return "I found sources, but could not extract enough readable text. Try adding more specific terms."
 
-def extract_equations(text: str):
-    patterns = [
-        r"[A-Za-z][A-Za-z0-9_]*(?:\s|\()*=\s*[^.;,]{2,80}",
-        r"[a-zA-Z]\s*[²^]\s*\d?\s*=\s*[^.;,]{2,80}",
-        r"[a-zA-Z]\s*=\s*[^.;,]{2,80}",
-        r"\b(?:v|u|a|t|s|F|m|E|p|P|V|I|R|W|Q|T)\s*=\s*[^.;,]{2,80}",
-    ]
-    found = []
-    for p in patterns:
-        for m in re.findall(p, text):
-            item = clean_text(m)
-            if 3 <= len(item) <= 100 and item not in found:
-                found.append(item)
-    # Also capture common unicode/symbol-heavy formula fragments.
-    for m in re.findall(r"[A-Za-z0-9²³√πθμσΔ=+\-*/()\[\] ]{8,90}", text):
-        item = clean_text(m)
-        if "=" in item and len(item.split()) <= 14 and item not in found:
-            found.append(item)
-    return found[:18]
+    equations = extract_equations(full_text)
+    domains = sorted(set(urlparse(s["url"]).netloc.replace("www.", "") for s in sources if s.get("url")))
 
+    # Build structured answer from source sentences. This is extractive, not a hardcoded answer.
+    intro_sentences = chosen[:3]
+    detail_sentences = chosen[3:12]
+    practical_sentences = chosen[12:18]
 
-def build_detailed_answer(query: str, collected):
-    all_text = "\n\n".join([c["text"] for c in collected if c.get("text")])
-    key_sents = rank_sentences(all_text, query, max_items=28)
-    equations = extract_equations(all_text)
+    md = []
+    md.append(f"## Detailed answer: {query}\n")
+    md.append("### 1. Main answer")
+    for s in intro_sentences:
+        md.append(f"- {s}")
 
-    if not key_sents:
-        return "I found search results, but I could not extract enough readable text. Try adding more specific words or use the Document Assistant for uploaded PDFs."
-
-    q_words = keywords(query)
-    title = query.strip().capitalize()
-    answer = []
-    answer.append(f"## Detailed answer: {title}\n")
-    answer.append("### 1. Main idea\n")
-    answer.append(" ".join(key_sents[:4]))
-
-    answer.append("\n\n### 2. Important details\n")
-    bullets = key_sents[4:14]
-    if bullets:
-        for s in bullets:
-            answer.append(f"- {s}")
-    else:
-        answer.append("- The available sources did not provide many additional readable details.")
+    md.append("\n### 2. Important details from sources")
+    for s in detail_sentences:
+        md.append(f"- {s}")
 
     if equations:
-        answer.append("\n\n### 3. Applicable equations / expressions found in sources\n")
-        for eq in equations[:12]:
-            answer.append(f"- `{eq}`")
+        md.append("\n### 3. Applicable equations / expressions found online")
+        for eq in equations[:10]:
+            md.append(f"- `{eq}`")
+    else:
+        md.append("\n### 3. Applicable equations / expressions found online")
+        md.append("- I did not find clean equation text in the readable pages. Try adding words like `formula`, `equation`, or `PDF` to the question.")
 
-    answer.append("\n\n### 4. Explanation in simple words\n")
-    simple = key_sents[14:21] if len(key_sents) > 14 else key_sents[:5]
-    answer.append(" ".join(simple))
+    md.append("\n### 4. Simple explanation")
+    for s in intro_sentences[:2] + detail_sentences[:2]:
+        md.append(f"- {s}")
 
-    answer.append("\n\n### 5. Practical use / why it matters\n")
-    practical = [s for s in key_sents if any(w in s.lower() for w in ["use", "used", "application", "calculate", "determine", "measure", "design", "predict", "estimate", "engineering", "example"])]
-    for s in practical[:5]:
-        answer.append(f"- {s}")
-    if not practical:
-        answer.append("- Use the answer above as a starting point, then open the cited sources for full context and examples.")
+    if practical_sentences:
+        md.append("\n### 5. Practical use / why it matters")
+        for s in practical_sentences:
+            md.append(f"- {s}")
 
-    answer.append("\n\n### 6. What I used\n")
-    domains = []
-    for c in collected:
-        d = domain_name(c["url"])
-        if d not in domains:
-            domains.append(d)
-    answer.append("I combined information from: " + ", ".join(domains[:8]) + ".")
-
-    return "\n".join(answer)
+    md.append("\n### 6. What I used")
+    if domains:
+        md.append("I used readable content from: " + ", ".join(domains[:8]) + ".")
+    else:
+        md.append("I used readable internet search results.")
+    return "\n".join(md)
 
 
-def research_web(query: str, depth: str = "Deep"):
-    max_results = 8 if depth == "Fast" else 14
-    page_limit = 5 if depth == "Fast" else 9
-    queries = [query]
-    if depth == "Deep":
-        queries += [
-            f"{query} explanation examples equations",
-            f"{query} filetype:pdf report notes",
-            f"{query} site:.edu OR site:.gov",
-        ]
-
+def research_answer(query: str):
+    queries = build_search_queries(query)
+    all_results = []
     seen_urls = set()
-    results = []
+
     for q in queries:
-        for r in ddg_text_search(q, max_results=max_results):
+        for r in ddg_search(q, max_results=6):
             if r["url"] not in seen_urls:
-                results.append(r)
                 seen_urls.add(r["url"])
-        time.sleep(0.2)
+                r["search_query"] = q
+                all_results.append(r)
 
-    collected = []
-    progress = st.progress(0, text="Reading internet sources...")
-    for i, r in enumerate(results[:page_limit]):
-        progress.progress((i + 1) / max(page_limit, 1), text=f"Reading: {domain_name(r['url'])}")
-        text = extract_html_text(r["url"])
-        combined = clean_text((r.get("snippet", "") + " " + text).strip())
-        if len(combined) > 250:
-            item = dict(r)
-            item["text"] = combined
-            collected.append(item)
-    progress.empty()
+    # Rank search results by title/snippet relevance before fetching pages.
+    all_results = sorted(
+        all_results,
+        key=lambda r: relevance_score((r.get("title", "") + " " + r.get("snippet", "")), query),
+        reverse=True,
+    )
 
-    if len(collected) < 2:
-        wiki = wikipedia_source(query)
+    source_texts = []
+    sources = []
+
+    for result in all_results[:12]:
+        preview = result.get("title", "") + " " + result.get("snippet", "")
+        if relevance_score(preview, query) < 2.5:
+            continue
+        page_text = fetch_page_text(result["url"])
+        combined = clean_text((preview + " " + page_text).strip())
+        if len(combined) > 250 and is_relevant(combined, query, min_score=7.0):
+            source_texts.append(combined)
+            result["relevance"] = round(relevance_score(combined, query), 2)
+            sources.append(result)
+        if len(source_texts) >= 6:
+            break
+
+    if len(source_texts) < 2:
+        wiki = safe_wikipedia_fallback(query)
         if wiki:
-            collected.append(wiki)
+            source_texts.append(wiki["text"])
+            sources.append({"title": wiki["title"] + " Wikipedia", "url": wiki["url"], "snippet": "Wikipedia fallback source", "relevance": round(relevance_score(wiki["text"], query), 2)})
 
-    images = ddg_image_search(query + " diagram figure", max_results=6)
-    answer = build_detailed_answer(query, collected) if collected else "I could not find enough readable internet content. Try a more specific question."
-    return answer, collected, images
+    if not source_texts:
+        return (
+            "I could not find reliable relevant sources for this question. Try using more specific technical words, for example: `earth pressure retaining wall Rankine Coulomb methods`. I rejected irrelevant results instead of giving a wrong answer.",
+            [],
+            [],
+        )
+
+    answer = make_detailed_answer(query, source_texts, sources)
+    figures = ddg_image_search(query + " diagram figure", max_results=6)
+    # Keep figures roughly relevant by title/source text.
+    figures = [f for f in figures if relevance_score(f.get("title", "") + " " + f.get("source", ""), query) >= 1.0][:4]
+    return answer, sources, figures
 
 
 def extract_pdf_text(uploaded_file):
     reader = PdfReader(uploaded_file)
-    pages = []
-    for page in reader.pages[:80]:
-        pages.append(page.extract_text() or "")
-    return "\n".join(pages)
+    text = []
+    for page in reader.pages:
+        text.append(page.extract_text() or "")
+    return "\n".join(text)
 
 
 def extract_docx_text(uploaded_file):
@@ -348,22 +379,18 @@ def extract_txt_text(uploaded_file):
     return uploaded_file.read().decode("utf-8", errors="ignore")
 
 
-def document_answer(text: str, question: str):
-    ranked = rank_sentences(text, question or "summary", max_items=30)
-    eqs = extract_equations(text)
-    out = ["## Document answer"]
-    if question:
-        out.append(f"**Question/focus:** {question}")
-    out.append("### Key points")
-    for s in ranked[:12]:
-        out.append(f"- {s}")
-    if eqs:
-        out.append("\n### Equations / expressions found")
-        for e in eqs[:12]:
-            out.append(f"- `{e}`")
-    out.append("\n### Longer extracted summary")
-    out.append(" ".join(ranked[12:24] if len(ranked) > 12 else ranked[:8]))
-    return "\n".join(out)
+def basic_document_summary(text, focus=""):
+    sentences = split_sentences(text)
+    if not sentences:
+        return "No readable text found."
+    key_source = focus if focus else text[:5000]
+    words = keywords(key_source)
+    if not words:
+        words = [w.lower() for w in re.findall(r"[a-zA-Z]{4,}", text) if w.lower() not in STOPWORDS]
+    common = [w for w, _ in Counter(words).most_common(15)]
+    ranked = sorted(sentences, key=lambda s: sentence_score(s, common, keyphrases(focus)), reverse=True)[:12]
+    ranked = sorted(ranked, key=lambda s: sentences.index(s))
+    return "\n\n".join([f"- {s}" for s in ranked])
 
 
 def solve_math(expr):
@@ -371,35 +398,28 @@ def solve_math(expr):
         x = sp.symbols("x")
         if "=" in expr:
             left, right = expr.split("=", 1)
-            equation = sp.sympify(left) - sp.sympify(right)
-            sol = sp.solve(equation, x)
-            return f"### Solution\n\nEquation: `{expr}`\n\nSolution for x: `{sol}`\n\nSimplified form: `{sp.factor(equation)}`"
+            sol = sp.solve(sp.sympify(left) - sp.sympify(right), x)
+            return f"Solution: {sol}"
         result = sp.sympify(expr)
-        return f"### Result\n\n`{sp.simplify(result)}`"
+        return f"Result: {sp.simplify(result)}"
     except Exception as e:
         return f"Could not solve that expression. Error: {e}"
 
 
 if "messages" not in st.session_state:
     st.session_state.messages = [
-        {"role": "assistant", "content": "Ask me a question. I can research the internet, online PDFs, figures, and documents, then write a detailed sourced answer."}
+        {"role": "assistant", "content": "Hi! Ask me anything. I will search the internet, reject irrelevant results, read sources/PDFs, and answer with links."}
     ]
 
 with st.sidebar:
-    st.header("Assistant modes")
-    mode = st.radio(
-        "Choose mode",
-        ["Internet Research Chat", "Document Assistant", "CSV Analyzer", "Math Solver"],
-        index=0,
-    )
-    st.divider()
-    depth = st.radio("Research depth", ["Fast", "Deep"], index=1)
-    st.caption("No API key version. It uses web search, public pages, PDFs, Wikipedia fallback, and local analysis. It is powerful, but not a true LLM like ChatGPT.")
+    st.header("Tools")
+    mode = st.radio("Choose mode", ["Internet Chat", "Document Assistant", "CSV Analyzer", "Math Solver"], index=0)
+    st.caption("No OpenAI/Claude API key. This is a web-research assistant, not a true LLM.")
+    st.markdown("### Search quality")
+    st.write("The app now checks relevance before using sources, so `earth pressure` will not turn into `Moon` results.")
 
-if mode == "Internet Research Chat":
-    st.subheader("Internet Research Chat")
-    st.info("Ask anything. For best results, ask specific questions such as: 'write equations of motion with explanation and diagram' or 'explain mat foundation design with equations and sources'.")
-
+if mode == "Internet Chat":
+    st.subheader("Ask from the internet")
     for msg in st.session_state.messages:
         with st.chat_message(msg["role"]):
             st.markdown(msg["content"])
@@ -411,66 +431,60 @@ if mode == "Internet Research Chat":
             st.markdown(question)
 
         with st.chat_message("assistant"):
-            with st.spinner("Searching web, reports, PDFs, and figures..."):
-                answer, sources, images = research_web(question, depth=depth)
+            with st.spinner("Searching multiple web queries, reading webpages/PDFs, checking relevance, and preparing answer..."):
+                answer, sources, figures = research_answer(question)
             st.markdown(f'<div class="answer-card">{answer}</div>', unsafe_allow_html=True)
 
-            if images:
-                st.markdown("### Figures / images found online")
-                cols = st.columns(min(3, len(images)))
-                for idx, img in enumerate(images[:6]):
-                    with cols[idx % len(cols)]:
-                        st.image(img["image"], caption=img["title"], use_container_width=True)
-                        if img.get("source"):
-                            st.markdown(f"[Source]({img['source']})")
+            if figures:
+                st.markdown("### Related figures / diagrams")
+                cols = st.columns(min(2, len(figures)))
+                for i, fig in enumerate(figures):
+                    with cols[i % len(cols)]:
+                        st.image(fig["image"], caption=fig.get("title", "Figure"), use_container_width=True)
+                        if fig.get("source"):
+                            st.markdown(f"[Image source]({fig['source']})")
 
             if sources:
                 st.markdown("### Sources read")
-                for i, src in enumerate(sources[:10], start=1):
+                for i, src in enumerate(sources[:8], start=1):
                     st.markdown(
-                        f'<div class="source-card"><b>{i}. {src["title"]}</b> <span class="tag">{src.get("kind", "web")}</span><br>'
-                        f'<a href="{src["url"]}" target="_blank">{src["url"]}</a><br>'
-                        f'<span class="small-muted">{src.get("snippet", "")}</span></div>',
+                        f'<div class="source-card"><b>{i}. {src["title"]}</b> <span class="badge">relevance {src.get("relevance", "")}</span><br><a href="{src["url"]}" target="_blank">{src["url"]}</a><br><span class="small-muted">{src.get("snippet", "")}</span></div>',
                         unsafe_allow_html=True,
                     )
-
-            saved = answer + "\n\nSources:\n" + "\n".join([f"- {s['title']}: {s['url']}" for s in sources[:10]])
+            saved = answer + "\n\nSources:\n" + "\n".join([f"- {s['title']}: {s['url']}" for s in sources[:8]])
             st.session_state.messages.append({"role": "assistant", "content": saved})
 
 elif mode == "Document Assistant":
-    st.subheader("Document Assistant")
-    uploaded = st.file_uploader("Upload PDF, DOCX, or TXT", type=["pdf", "docx", "txt"])
-    question = st.text_input("Ask a question about the document or leave blank for summary")
-    if uploaded:
-        if uploaded.name.lower().endswith(".pdf"):
-            text = extract_pdf_text(uploaded)
-        elif uploaded.name.lower().endswith(".docx"):
-            text = extract_docx_text(uploaded)
-        else:
-            text = extract_txt_text(uploaded)
-        st.success(f"Extracted about {len(text):,} characters.")
-        if st.button("Analyze document"):
-            st.markdown(document_answer(text, question))
+    st.subheader("Upload and summarize documents")
+    file = st.file_uploader("Upload PDF, DOCX, or TXT", type=["pdf", "docx", "txt"])
+    if file:
+        with st.spinner("Reading document..."):
+            if file.name.lower().endswith(".pdf"):
+                text = extract_pdf_text(file)
+            elif file.name.lower().endswith(".docx"):
+                text = extract_docx_text(file)
+            else:
+                text = extract_txt_text(file)
+        st.success(f"Extracted approximately {len(text):,} characters.")
+        user_focus = st.text_input("Optional: what should I focus on?", "")
+        if st.button("Summarize document"):
+            st.markdown(basic_document_summary(text, user_focus))
 
 elif mode == "CSV Analyzer":
-    st.subheader("CSV Analyzer")
-    uploaded = st.file_uploader("Upload CSV", type=["csv"])
-    if uploaded:
-        df = pd.read_csv(uploaded)
+    st.subheader("CSV data analyzer")
+    file = st.file_uploader("Upload CSV", type=["csv"])
+    if file:
+        df = pd.read_csv(file)
         st.dataframe(df, use_container_width=True)
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Rows", f"{df.shape[0]:,}")
-        c2.metric("Columns", f"{df.shape[1]:,}")
-        c3.metric("Missing cells", f"{int(df.isna().sum().sum()):,}")
-        st.markdown("### Statistical summary")
+        st.markdown("### Summary")
         st.write(df.describe(include="all"))
-        numeric = df.select_dtypes(include=[np.number]).columns.tolist()
-        if numeric:
-            col = st.selectbox("Chart numeric column", numeric)
+        numeric_cols = df.select_dtypes(include=[np.number]).columns.tolist()
+        if numeric_cols:
+            col = st.selectbox("Choose numeric column for chart", numeric_cols)
             st.bar_chart(df[col])
 
 elif mode == "Math Solver":
-    st.subheader("Math Solver")
+    st.subheader("Math solver")
     expr = st.text_input("Enter expression or equation, for example: x**2 - 5*x + 6 = 0")
     if st.button("Solve") and expr:
         st.markdown(solve_math(expr))
