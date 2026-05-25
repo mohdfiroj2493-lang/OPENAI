@@ -8,5 +8,3 @@ pandas
 numpy
 pypdf
 python-docx
-matplotlib
-trafilatura
