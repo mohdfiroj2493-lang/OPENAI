@@ -1,3 +1,8 @@
 streamlit
 wikipedia
 sympy
+pandas
+numpy
+pypdf
+python-docx
+matplotlib
