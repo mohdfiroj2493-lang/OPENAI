@@ -8,3 +8,5 @@ pandas
 numpy
 pypdf
 python-docx
+Pillow
+lxml
